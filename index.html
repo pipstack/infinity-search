@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinity - Your Site Manager</title>
+    <meta name="description" content="Infinity - Manage and access your static sites with ease">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@300;400;500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- App Bar -->
+    <header class="app-bar">
+        <div class="app-bar-content">
+            <div class="logo-section">
+                <span class="logo-icon">∞</span>
+                <h1 class="app-title">Infinity</h1>
+            </div>
+            <div class="app-bar-stats">
+                <span id="siteCount" class="site-count">0 sites</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Google-style Search Section -->
+            <div class="search-wrapper">
+                <div class="search-container">
+                    <div class="search-bar">
+                        <span class="material-symbols-outlined search-icon">search</span>
+                        <input type="text" id="searchInput" placeholder="Search your sites" autocomplete="off"
+                            aria-label="Search sites">
+                        <button id="clearSearch" class="clear-btn" style="display: none;">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="search-buttons">
+                    <button id="searchBtn" class="search-button">
+                        <span class="material-symbols-outlined">search</span>
+                        Search Sites
+                    </button>
+                    <button id="showAllBtn" class="search-button">
+                        <span class="material-symbols-outlined">list</span>
+                        Show All
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sites List -->
+            <div id="sitesList" class="sites-list">
+                <!-- Sites will be dynamically added here -->
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="empty-state">
+                <span class="material-symbols-outlined empty-icon">language</span>
+                <h2>No sites yet</h2>
+                <p>Click the + button below to add your first site</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Floating Action Button -->
+    <button id="fabBtn" class="fab" aria-label="Add new site">
+        <span class="material-symbols-outlined">add</span>
+    </button>
+
+    <!-- Add Site Modal -->
+    <div id="addModal" class="modal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add New Site</h2>
+                <button id="closeModal" class="icon-btn" aria-label="Close">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label for="siteName" class="input-label">
+                        <span class="material-symbols-outlined">label</span>
+                        Site Name
+                    </label>
+                    <input type="text" id="siteName" class="text-input" placeholder="e.g., My Portfolio"
+                        autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label for="siteUrl" class="input-label">
+                        <span class="material-symbols-outlined">link</span>
+                        Site URL
+                    </label>
+                    <input type="url" id="siteUrl" class="text-input" placeholder="e.g., http://localhost:8000"
+                        autocomplete="off">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancelBtn" class="btn-text">Cancel</button>
+                <button id="addSiteBtn" class="btn-primary">
+                    <span class="material-symbols-outlined">add</span>
+                    Add Site
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
