@@ -1,6 +1,6 @@
 services:
   infinity-search:
-    image: duefix/infinity-search:local
+    image: duefix/infinity-search:1.0.0
     container_name: infinity-search
     restart: unless-stopped
 
