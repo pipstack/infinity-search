@@ -68,14 +68,78 @@ func initDB(db *sql.DB) error {
 			created_at TEXT NOT NULL
 		);
 	`)
+	if err != nil {
+		return err
+	}
 
-	return err
+	_, err = db.Exec(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS sites_fts
+		USING fts5(
+			name,
+			url,
+			description,
+			content='sites',
+			content_rowid='id'
+		);
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec(`
+		CREATE TRIGGER IF NOT EXISTS sites_ai
+		AFTER INSERT ON sites
+		BEGIN
+			INSERT INTO sites_fts(rowid, name, url, description)
+			VALUES (new.id, new.name, new.url, new.description);
+		END;
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec(`
+		CREATE TRIGGER IF NOT EXISTS sites_ad
+		AFTER DELETE ON sites
+		BEGIN
+			INSERT INTO sites_fts(sites_fts, rowid, name, url, description)
+			VALUES ('delete', old.id, old.name, old.url, old.description);
+		END;
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec(`
+		CREATE TRIGGER IF NOT EXISTS sites_au
+		AFTER UPDATE ON sites
+		BEGIN
+			INSERT INTO sites_fts(sites_fts, rowid, name, url, description)
+			VALUES ('delete', old.id, old.name, old.url, old.description);
+
+			INSERT INTO sites_fts(rowid, name, url, description)
+			VALUES (new.id, new.name, new.url, new.description);
+		END;
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Rebuild the FTS index from the existing sites table.
+	// This also picks up records that existed before FTS5 was enabled.
+	_, err = db.Exec(`
+		INSERT INTO sites_fts(sites_fts)
+		VALUES ('rebuild');
+	`)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, http.StatusOK, map[string]string{
 		"status": "ok",
 	})
 }
@@ -108,16 +172,15 @@ func getSites(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 			ORDER BY id DESC
 		`)
 	} else {
-		search := "%" + query + "%"
+		ftsQuery := buildFTSQuery(query)
 
 		rows, err = db.Query(`
-			SELECT id, name, url, description, created_at
-			FROM sites
-			WHERE name LIKE ?
-			   OR url LIKE ?
-			   OR description LIKE ?
-			ORDER BY id DESC
-		`, search, search, search)
+			SELECT s.id, s.name, s.url, s.description, s.created_at
+			FROM sites s
+			JOIN sites_fts f ON f.rowid = s.id
+			WHERE sites_fts MATCH ?
+			ORDER BY bm25(sites_fts), s.id DESC
+		`, ftsQuery)
 	}
 
 	if err != nil {
@@ -154,6 +217,25 @@ func getSites(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sites)
 }
 
+func buildFTSQuery(query string) string {
+	words := strings.Fields(query)
+
+	escaped := make([]string, 0, len(words))
+
+	for _, word := range words {
+		word = strings.TrimSpace(word)
+
+		if word == "" {
+			continue
+		}
+
+		word = strings.ReplaceAll(word, `"`, `""`)
+		escaped = append(escaped, `"`+word+`"`)
+	}
+
+	return strings.Join(escaped, " AND ")
+}
+
 func addSite(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Name        string `json:"name"`
@@ -182,7 +264,11 @@ func addSite(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 
 	if !strings.HasPrefix(input.URL, "http://") &&
 		!strings.HasPrefix(input.URL, "https://") {
-		writeJSONError(w, http.StatusBadRequest, "url must start with http:// or https://")
+		writeJSONError(
+			w,
+			http.StatusBadRequest,
+			"url must start with http:// or https://",
+		)
 		return
 	}
 
@@ -204,15 +290,13 @@ func addSite(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	site := Site{
+	writeJSON(w, http.StatusCreated, Site{
 		ID:          id,
 		Name:        input.Name,
 		URL:         input.URL,
 		Description: input.Description,
 		CreatedAt:   createdAt,
-	}
-
-	writeJSON(w, http.StatusCreated, site)
+	})
 }
 
 func siteByIDHandler(db *sql.DB, w http.ResponseWriter, r *http.Request) {
@@ -270,7 +354,10 @@ func deleteSite(db *sql.DB, w http.ResponseWriter, id int64) {
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(value)
+
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		log.Printf("JSON encode error: %v", err)
+	}
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {
