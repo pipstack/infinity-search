@@ -1,0 +1,16 @@
+# Go build output
+local-search-server
+*.exe
+
+# SQLite database
+*.db
+*.db-shm
+*.db-wal
+
+# Local data
+data/
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/
