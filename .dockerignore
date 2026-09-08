@@ -1,0 +1,16 @@
+.git
+.gitignore
+
+local-search-server
+
+index.html.before-api
+script.js.localstorage-backup
+
+*.db
+*.db-shm
+*.db-wal
+
+Dockerfile
+compose.yaml
+
+README*

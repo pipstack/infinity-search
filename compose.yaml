@@ -1,0 +1,14 @@
+services:
+  infinity-search:
+    image: duefix/infinity-search:local
+    container_name: infinity-search
+    restart: unless-stopped
+
+    ports:
+      - "18080:8080"
+
+    volumes:
+      - infinity-search-data:/data
+
+volumes:
+  infinity-search-data:
