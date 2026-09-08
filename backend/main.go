@@ -51,7 +51,11 @@ func main() {
 		siteByIDHandler(db, w, r)
 	})
 
-	log.Println("local-search API listening on :8080")
+	// Serve the frontend from the project root.
+	fs := http.FileServer(http.Dir("."))
+	http.Handle("/", fs)
+
+	log.Println("local-search server listening on :8080")
 
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatal(err)

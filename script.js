@@ -1,7 +1,4 @@
-// ========================================
-// LOCAL STORAGE KEY
-// ========================================
-const STORAGE_KEY = 'infinitySites';
+const API_BASE = '/api';
 
 // ========================================
 // DOM ELEMENTS
@@ -19,40 +16,76 @@ const sitesList = document.getElementById('sitesList');
 const emptyState = document.getElementById('emptyState');
 const siteCount = document.getElementById('siteCount');
 
-// ========================================
-// STATE MANAGEMENT
-// ========================================
 let sites = [];
+let currentQuery = '';
 
 // ========================================
 // INITIALIZATION
 // ========================================
-function init() {
-    loadSites();
-    renderSites();
+async function init() {
     attachEventListeners();
+    await loadSites();
 }
 
 // ========================================
-// LOCAL STORAGE FUNCTIONS
+// API
 // ========================================
-function loadSites() {
+async function loadSites(query = '') {
     try {
-        const storedSites = localStorage.getItem(STORAGE_KEY);
-        sites = storedSites ? JSON.parse(storedSites) : [];
+        const url = query
+            ? `${API_BASE}/sites?q=${encodeURIComponent(query)}`
+            : `${API_BASE}/sites`;
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        sites = await response.json();
+        renderSites();
     } catch (error) {
-        console.error('Error loading sites from local storage:', error);
+        console.error('Error loading sites:', error);
+        showSnackbar('Failed to load sites', 'error');
         sites = [];
+        renderSites();
     }
 }
 
-function saveSites() {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(sites));
-    } catch (error) {
-        console.error('Error saving sites to local storage:', error);
-        showSnackbar('Failed to save site', 'error');
+async function createSite(name, url, description) {
+    const response = await fetch(`${API_BASE}/sites`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            name,
+            url,
+            description
+        })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error || 'Failed to add site');
     }
+
+    return data;
+}
+
+async function removeSite(id) {
+    const response = await fetch(`${API_BASE}/sites/${id}`, {
+        method: 'DELETE'
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete site');
+    }
+
+    return data;
 }
 
 // ========================================
@@ -66,19 +99,30 @@ function openModal() {
 
 function closeModalDialog() {
     addModal.classList.remove('show');
+
     siteNameInput.value = '';
     siteUrlInput.value = '';
+
+    const descriptionInput = document.getElementById('siteDescription');
+    if (descriptionInput) {
+        descriptionInput.value = '';
+    }
+
     document.body.style.overflow = '';
 }
 
 // ========================================
 // SITE MANAGEMENT
 // ========================================
-function addSite() {
+async function addSite() {
     const name = siteNameInput.value.trim();
     const url = siteUrlInput.value.trim();
 
-    // Validation
+    const descriptionInput = document.getElementById('siteDescription');
+    const description = descriptionInput
+        ? descriptionInput.value.trim()
+        : '';
+
     if (!name) {
         showSnackbar('Please enter a site name', 'error');
         siteNameInput.focus();
@@ -91,194 +135,227 @@ function addSite() {
         return;
     }
 
-    // Validate URL format
     if (!isValidUrl(url)) {
         showSnackbar('Please enter a valid URL', 'error');
         siteUrlInput.focus();
         return;
     }
 
-    // Create new site object
-    const newSite = {
-        id: generateId(),
-        name: name,
-        url: url,
-        createdAt: new Date().toISOString()
-    };
+    addSiteBtn.disabled = true;
 
-    // Add to sites array
-    sites.unshift(newSite);
+    try {
+        await createSite(name, url, description);
 
-    // Save to local storage
-    saveSites();
+        closeModalDialog();
 
-    // Re-render
-    renderSites();
+        await loadSites(currentQuery);
 
-    // Close modal
-    closeModalDialog();
-
-    // Show success feedback
-    showSnackbar('Site added successfully');
+        showSnackbar('Site added successfully');
+    } catch (error) {
+        console.error('Error adding site:', error);
+        showSnackbar(error.message, 'error');
+    } finally {
+        addSiteBtn.disabled = false;
+    }
 }
 
-function deleteSite(id) {
+async function deleteSite(id) {
     const site = sites.find(s => s.id === id);
 
-    if (!site) return;
+    if (!site) {
+        return;
+    }
 
-    if (confirm(`Delete "${site.name}"?`)) {
-        sites = sites.filter(s => s.id !== id);
-        saveSites();
-        renderSites();
+    if (!confirm(`Delete "${site.name}"?`)) {
+        return;
+    }
+
+    try {
+        await removeSite(id);
+
+        await loadSites(currentQuery);
+
         showSnackbar('Site deleted');
+    } catch (error) {
+        console.error('Error deleting site:', error);
+        showSnackbar(error.message, 'error');
     }
 }
 
 // ========================================
-// RENDER FUNCTIONS
+// RENDER
 // ========================================
-function renderSites(filteredSites = null) {
-    const sitesToRender = filteredSites !== null ? filteredSites : sites;
+function renderSites() {
+    updateSiteCount(sites.length);
 
-    // Update count
-    updateSiteCount(sitesToRender.length);
-
-    // Clear the list
     sitesList.innerHTML = '';
 
-    // Show/hide empty state
-    if (sitesToRender.length === 0) {
+    if (sites.length === 0) {
         emptyState.classList.add('show');
         return;
-    } else {
-        emptyState.classList.remove('show');
     }
 
-    // Render each site
-    sitesToRender.forEach(site => {
-        const siteCard = createSiteCard(site);
-        sitesList.appendChild(siteCard);
+    emptyState.classList.remove('show');
+
+    sites.forEach(site => {
+        sitesList.appendChild(createSiteCard(site));
     });
 }
 
 function createSiteCard(site) {
     const card = document.createElement('div');
+
     card.className = 'site-card';
     card.setAttribute('data-id', site.id);
 
-    card.innerHTML = `
-        <a href="${escapeHtml(site.url)}" class="site-link" target="_blank" rel="noopener noreferrer">
-            <div class="site-header">
-                <div class="site-info">
-                    <div class="site-name">${escapeHtml(site.name)}</div>
-                    <div class="site-url">${escapeHtml(site.url)}</div>
-                </div>
-            </div>
-        </a>
-        <div class="site-actions">
-            <button class="icon-btn" onclick="deleteSite('${site.id}')" aria-label="Delete site">
-                <span class="material-symbols-outlined">delete</span>
-            </button>
-        </div>
-    `;
+    const link = document.createElement('a');
+    link.href = site.url;
+    link.className = 'site-link';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+
+    const header = document.createElement('div');
+    header.className = 'site-header';
+
+    const info = document.createElement('div');
+    info.className = 'site-info';
+
+    const name = document.createElement('div');
+    name.className = 'site-name';
+    name.textContent = site.name;
+
+    const url = document.createElement('div');
+    url.className = 'site-url';
+    url.textContent = site.url;
+
+    info.appendChild(name);
+    info.appendChild(url);
+
+    if (site.description) {
+        const description = document.createElement('div');
+        description.className = 'site-description';
+        description.textContent = site.description;
+        info.appendChild(description);
+    }
+
+    const date = document.createElement('div');
+    date.className = 'site-date';
+    date.textContent = formatDate(site.created_at);
+
+    info.appendChild(date);
+    header.appendChild(info);
+    link.appendChild(header);
+
+    const actions = document.createElement('div');
+    actions.className = 'site-actions';
+
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'icon-btn';
+    deleteButton.setAttribute('aria-label', 'Delete site');
+
+    deleteButton.innerHTML =
+        '<span class="material-symbols-outlined">delete</span>';
+
+    deleteButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        deleteSite(site.id);
+    });
+
+    actions.appendChild(deleteButton);
+
+    card.appendChild(link);
+    card.appendChild(actions);
 
     return card;
 }
 
 function updateSiteCount(count) {
-    siteCount.textContent = `${count} ${count === 1 ? 'site' : 'sites'}`;
+    siteCount.textContent =
+        `${count} ${count === 1 ? 'site' : 'sites'}`;
 }
 
 // ========================================
-// SEARCH FUNCTIONALITY
+// SEARCH
 // ========================================
-function searchSites(query) {
-    const searchTerm = query.toLowerCase().trim();
+async function searchSites(query) {
+    const searchTerm = query.trim();
 
-    // Show/hide clear button
-    if (searchTerm) {
-        clearSearchBtn.style.display = 'flex';
-    } else {
-        clearSearchBtn.style.display = 'none';
-    }
+    currentQuery = searchTerm;
 
-    if (!searchTerm) {
-        renderSites();
-        return;
-    }
+    clearSearchBtn.style.display =
+        searchTerm ? 'flex' : 'none';
 
-    const filteredSites = sites.filter(site => {
-        return site.name.toLowerCase().includes(searchTerm) ||
-            site.url.toLowerCase().includes(searchTerm);
-    });
-
-    renderSites(filteredSites);
+    await loadSites(searchTerm);
 }
 
 function clearSearch() {
     searchInput.value = '';
+    currentQuery = '';
+
     clearSearchBtn.style.display = 'none';
-    renderSites();
+
+    loadSites();
+
     searchInput.focus();
 }
 
 // ========================================
-// EVENT LISTENERS
+// EVENTS
 // ========================================
 function attachEventListeners() {
-    // FAB button
     fabBtn.addEventListener('click', openModal);
 
-    // Modal controls
     closeModal.addEventListener('click', closeModalDialog);
+
     cancelBtn.addEventListener('click', closeModalDialog);
 
-    // Close modal on backdrop click
-    addModal.addEventListener('click', (e) => {
-        if (e.target === addModal || e.target.classList.contains('modal-backdrop')) {
+    addModal.addEventListener('click', (event) => {
+        if (
+            event.target === addModal ||
+            event.target.classList.contains('modal-backdrop')
+        ) {
             closeModalDialog();
         }
     });
 
-    // Close modal on Escape key
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && addModal.classList.contains('show')) {
+    document.addEventListener('keydown', (event) => {
+        if (
+            event.key === 'Escape' &&
+            addModal.classList.contains('show')
+        ) {
             closeModalDialog();
         }
     });
 
-    // Add site button
     addSiteBtn.addEventListener('click', addSite);
 
-    // Enter key on inputs
-    siteNameInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
+    siteNameInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
             siteUrlInput.focus();
         }
     });
 
-    siteUrlInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
+    siteUrlInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
             addSite();
         }
     });
 
-    // Search input
-    searchInput.addEventListener('input', (e) => {
-        searchSites(e.target.value);
+    searchInput.addEventListener('input', (event) => {
+        searchSites(event.target.value);
     });
 
-    // Search button click
     const searchBtn = document.getElementById('searchBtn');
+
     if (searchBtn) {
         searchBtn.addEventListener('click', () => {
             searchSites(searchInput.value);
         });
     }
 
-    // Show all button click
     const showAllBtn = document.getElementById('showAllBtn');
+
     if (showAllBtn) {
         showAllBtn.addEventListener('click', () => {
             searchInput.value = '';
@@ -286,124 +363,92 @@ function attachEventListeners() {
         });
     }
 
-    // Enter key on search input
-    searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
+    searchInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
             searchSites(searchInput.value);
         }
     });
 
-    // Clear search button
     clearSearchBtn.addEventListener('click', clearSearch);
 
-    // Focus search on '/' key
-    document.addEventListener('keydown', (e) => {
-        if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
-            e.preventDefault();
+    document.addEventListener('keydown', (event) => {
+        if (
+            event.key === '/' &&
+            !['INPUT', 'TEXTAREA'].includes(
+                document.activeElement.tagName
+            )
+        ) {
+            event.preventDefault();
             searchInput.focus();
         }
     });
 }
 
 // ========================================
-// UTILITY FUNCTIONS
+// UTILITIES
 // ========================================
-function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
-
-function isValidUrl(string) {
+function isValidUrl(value) {
     try {
-        // Check if it's a file:// URL
-        if (string.startsWith('file://')) {
-            return true;
-        }
+        const url = new URL(value);
 
-        // Check if it's a valid http/https URL
-        const url = new URL(string);
-        return url.protocol === 'http:' || url.protocol === 'https:';
-    } catch (err) {
+        return (
+            url.protocol === 'http:' ||
+            url.protocol === 'https:'
+        );
+    } catch {
         return false;
     }
 }
 
-function escapeHtml(unsafe) {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+function formatDate(value) {
+    if (!value) {
+        return '';
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
 function showSnackbar(message, type = 'success') {
-    // Remove existing snackbar
-    const existingSnackbar = document.querySelector('.snackbar');
+    const existingSnackbar =
+        document.querySelector('.snackbar');
+
     if (existingSnackbar) {
         existingSnackbar.remove();
     }
 
-    // Create snackbar
     const snackbar = document.createElement('div');
+
     snackbar.className = `snackbar ${type}`;
     snackbar.textContent = message;
 
-    // Add styles
-    Object.assign(snackbar.style, {
-        position: 'fixed',
-        bottom: '24px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        background: type === 'error' ? '#ea4335' : '#202124',
-        color: 'white',
-        padding: '14px 24px',
-        borderRadius: '4px',
-        fontSize: '14px',
-        fontFamily: 'Roboto, sans-serif',
-        boxShadow: '0 4px 8px 3px rgba(60, 64, 67, 0.15)',
-        zIndex: '2000',
-        animation: 'slideUp 0.2s ease-out',
-        minWidth: '288px',
-        textAlign: 'center'
-    });
-
     document.body.appendChild(snackbar);
 
-    // Remove after 3 seconds
+    requestAnimationFrame(() => {
+        snackbar.classList.add('show');
+    });
+
     setTimeout(() => {
-        snackbar.style.animation = 'slideDown 0.2s ease-out';
-        setTimeout(() => snackbar.remove(), 200);
+        snackbar.classList.remove('show');
+
+        setTimeout(() => {
+            snackbar.remove();
+        }, 300);
     }, 3000);
 }
 
-// Add snackbar animations
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideUp {
-        from {
-            transform: translateX(-50%) translateY(100px);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(-50%) translateY(0);
-            opacity: 1;
-        }
-    }
-    
-    @keyframes slideDown {
-        from {
-            transform: translateX(-50%) translateY(0);
-            opacity: 1;
-        }
-        to {
-            transform: translateX(-50%) translateY(100px);
-            opacity: 0;
-        }
-    }
-`;
-document.head.appendChild(style);
-
 // ========================================
-// START THE APP
+// START
 // ========================================
 init();

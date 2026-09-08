@@ -14,3 +14,7 @@ data/
 .DS_Store
 .vscode/
 .idea/
+
+# Local frontend backups
+*.before-api
+*.localstorage-backup
